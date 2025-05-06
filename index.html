@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parent-Teacher Meeting Simulator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f8ff;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background-color: #0077b6;
+      color: white;
+      text-align: center;
+      padding: 20px;
+      font-size: 1.5em;
+    }
+    .container {
+      padding: 20px;
+      max-width: 800px;
+      margin: auto;
+    }
+    .chat-box {
+      background: #ffffff;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      height: 400px;
+      overflow-y: auto;
+      padding: 10px;
+      margin-bottom: 20px;
+    }
+    .message {
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 8px;
+      max-width: 70%;
+    }
+    .parent {
+      background-color: #d0ebff;
+      text-align: left;
+      margin-right: auto;
+    }
+    .teacher {
+      background-color: #d3f9d8;
+      text-align: right;
+      margin-left: auto;
+    }
+    .input-section {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .input-section input[type="text"] {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+    .input-section button {
+      padding: 10px 15px;
+      border-radius: 8px;
+      border: none;
+      background-color: #0077b6;
+      color: white;
+      cursor: pointer;
+    }
+    .status {
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    .spinner {
+      display: none;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <header>Parent-Teacher Meeting Simulator</header>
+  <div class="container">
+    <div class="chat-box" id="chat-box"></div>
+
+    <div class="input-section">
+      <input type="text" id="text-input" placeholder="Type your message here...">
+      <button onclick="sendText()">Send</button>
+      <button onclick="startVoiceInput()">Speak</button>
+    </div>
+
+    <div>
+      <button onclick="startMeeting()">Start Meeting</button>
+      <button onclick="endMeeting()">End Meeting</button>
+    </div>
+
+    <div class="spinner" id="spinner">Loading...</div>
+    <div class="status" id="sentiment">Sentiment: --</div>
+  </div>
+
+  <script>
+    let sessionMessages = [];
+
+    function addMessage(text, sender) {
+      const chatBox = document.getElementById('chat-box');
+      const message = document.createElement('div');
+      message.className = `message ${sender}`;
+      message.textContent = `${sender.charAt(0).toUpperCase() + sender.slice(1)}: ${text}`;
+      chatBox.appendChild(message);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function startMeeting() {
+      fetch('/start', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => addMessage(data.message, 'teacher'));
+    }
+
+    function endMeeting() {
+      fetch('/end', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: sessionMessages })
+      })
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById('sentiment').textContent = 'Sentiment: ' + data.sentiment;
+          addMessage("Thank you for the meeting. Goodbye!", 'teacher');
+        });
+    }
+
+    function sendText() {
+      const input = document.getElementById('text-input');
+      const text = input.value;
+      if (!text.trim()) return;
+      input.value = '';
+      addMessage(text, 'parent');
+      sessionMessages.push(text);
+      sendMessageToBackend(text);
+    }
+
+    function sendMessageToBackend(message) {
+      document.getElementById('spinner').style.display = 'block';
+      fetch('/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: message })
+      })
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById('spinner').style.display = 'none';
+        addMessage(data.response, 'teacher');
+        sessionMessages.push(data.response);
+        speakText(data.response);
+      })
+      .catch(() => {
+        document.getElementById('spinner').style.display = 'none';
+        addMessage("Sorry, I didn’t catch that.", 'teacher');
+      });
+    }
+
+    function startVoiceInput() {
+      const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+
+      recognition.onresult = function(event) {
+        const transcript = event.results[0][0].transcript;
+        addMessage(transcript, 'parent');
+        sessionMessages.push(transcript);
+        sendMessageToBackend(transcript);
+      };
+
+      recognition.onerror = function() {
+        addMessage("Sorry, I didn’t catch that.", 'teacher');
+      };
+
+      recognition.start();
+    }
+
+    function speakText(text) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      speechSynthesis.speak(utterance);
+    }
+  </script>
+</body>
+</html>
